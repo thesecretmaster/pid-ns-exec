@@ -51,7 +51,6 @@ name = "pid-ns-exec"
 version = "0.1.0"
 dependencies = [
  "caps",
- "errno",
  "libc",
 ]
 

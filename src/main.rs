@@ -6,18 +6,16 @@
  */
 
 use std::env;
-use errno::errno;
 
-
-fn wait_for_children() -> Result<(), errno::Errno> {
+fn wait_for_children() -> Result<(), std::io::Error> {
     loop {
         let wait_retval = unsafe { libc::waitid(libc::P_ALL, 0, std::ptr::null_mut(), libc::WEXITED) };
         if wait_retval == -1 {
-            let errno = errno();
-            match errno.0 {
-                libc::ECHILD => return Ok(()),
-                libc::EAGAIN => continue,
-                libc::EINTR => continue,
+            let errno = std::io::Error::last_os_error();
+            match errno.raw_os_error() {
+                Some(libc::ECHILD) => return Ok(()),
+                Some(libc::EAGAIN) => continue,
+                Some(libc::EINTR) => continue,
                 _ => return Err(errno)
             }
         }
@@ -50,8 +48,7 @@ pub extern "C" fn ns_init(_: *mut libc::c_void) -> libc::c_int {
 
     // Check for success, otherwise print PID
     if pid <= 0 {
-        let errno = errno();
-        println!("Error launching application thread {}: {}", errno.0, errno);
+        println!("Error launching application thread {}", std::io::Error::last_os_error());
     } else {
         println!("Launched application thread at {}", pid);
         wait_for_children().unwrap();
@@ -75,8 +72,7 @@ pub extern "C" fn exec(_: *mut libc::c_void) -> libc::c_int {
     let rv = unsafe { libc::execvp(prog_ptr.as_ptr(), args_ptr.as_ptr()) };
 
     if rv != 0 {
-        let errno = errno();
-        println!("Error executing application {}: {}", errno.0, errno);
+        println!("Error executing application {}", std::io::Error::last_os_error());
     }
     panic!("Running after sucessful execv")
 }
@@ -101,8 +97,7 @@ fn main() {
 
     // Check for success, otherwise print PID
     if pid <= 0 {
-        let errno = errno();
-        println!("Error launching PID NS root {}: {}", errno.0, errno);
+        println!("Error launching PID NS root {}", std::io::Error::last_os_error());
     } else {
         println!("PID NS root is at {}", pid);
         wait_for_children().unwrap();
