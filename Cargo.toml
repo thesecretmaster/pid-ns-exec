@@ -9,3 +9,4 @@ edition = "2021"
 libc = "0.2.126"
 errno = "0.2.8"
 caps = "0.5.3"
+nix = { version = "0.24.1", features = ["process", "sched"]}
