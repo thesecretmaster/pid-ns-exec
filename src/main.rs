@@ -29,7 +29,7 @@ unsafe fn gen_stack() -> *mut u8 {
     const STACK_SIZE: usize = 4096;
 
     let layout = std::alloc::Layout::from_size_align(STACK_SIZE, std::mem::align_of::<u64>()).expect("Could not generate layout");
-    let stack: *mut u8 = std::alloc::alloc(layout).offset(STACK_SIZE.try_into().unwrap());
+    let stack: *mut u8 = std::alloc::alloc_zeroed(layout).offset(STACK_SIZE.try_into().unwrap());
     stack
 }
 
