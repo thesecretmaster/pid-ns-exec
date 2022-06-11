@@ -8,7 +8,6 @@
 use std::env;
 use std::ffi::CString;
 
-
 fn main() {
     // Validate argument length
     let args: Vec<String> = env::args().collect();
@@ -22,12 +21,15 @@ fn main() {
 
     // Check for success, otherwise print PID
     if pid <= 0 {
-        println!("Error launching PID NS root {}", std::io::Error::last_os_error());
+        println!(
+            "Error launching PID NS root {}",
+            std::io::Error::last_os_error()
+        )
     } else {
         println!("PID NS root is at {}", pid);
 
         match wait_for_children() {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 println!("Waiting for children of initial program failed: {}", e);
                 println!("PID NS still running, but detached");
@@ -50,7 +52,10 @@ pub extern "C" fn ns_init(_: *mut libc::c_void) -> libc::c_int {
 
     // Check for success, otherwise print PID
     if pid <= 0 {
-        println!("Error launching application thread {}", std::io::Error::last_os_error());
+        println!(
+            "Error launching application thread {}",
+            std::io::Error::last_os_error()
+        );
         -1
     } else {
         println!("Launched application thread at {}", pid);
@@ -92,7 +97,10 @@ pub extern "C" fn exec(_: *mut libc::c_void) -> libc::c_int {
     let rv = unsafe { libc::execvp(prog_ptr.as_ptr(), args_ptr.as_ptr()) };
 
     if rv != 0 {
-        println!("Error executing application {}", std::io::Error::last_os_error());
+        println!(
+            "Error executing application {}",
+            std::io::Error::last_os_error()
+        );
         -1
     } else {
         // `execvp` should replace the running process image (or
@@ -110,7 +118,7 @@ fn wait_for_children() -> Result<(), std::io::Error> {
             match errno.raw_os_error() {
                 Some(libc::ECHILD) => return Ok(()),
                 Some(libc::EINTR) => continue,
-                _ => return Err(errno)
+                _ => return Err(errno),
             }
         }
     }
