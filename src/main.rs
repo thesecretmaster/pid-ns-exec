@@ -7,28 +7,25 @@
 
 use std::env;
 
-fn wait_for_children() -> Result<(), std::io::Error> {
-    loop {
-        let wait_retval = unsafe { libc::waitid(libc::P_ALL, 0, std::ptr::null_mut(), libc::WEXITED) };
-        if wait_retval == -1 {
-            let errno = std::io::Error::last_os_error();
-            match errno.raw_os_error() {
-                Some(libc::ECHILD) => return Ok(()),
-                Some(libc::EAGAIN) => continue,
-                Some(libc::EINTR) => continue,
-                _ => return Err(errno)
-            }
-        }
+
+
+fn main() {
+    // Validate argument length
+    let args: Vec<String> = env::args().collect();
+    if args.len() <= 1 {
+        panic!("You need to pass some args")
     }
-}
 
-unsafe fn gen_stack() -> *mut u8 {
-    // I think 4096 should be more than enough for the stack
-    const STACK_SIZE: usize = 4096;
+    println!("Launching PID NS root");
+    let pid = unsafe { launch_thread(ns_init, MANAGER_STACK_SIZE, libc::CLONE_NEWPID) };
 
-    let layout = std::alloc::Layout::from_size_align(STACK_SIZE, std::mem::align_of::<u64>()).expect("Could not generate layout");
-    let stack: *mut u8 = std::alloc::alloc_zeroed(layout).offset(STACK_SIZE.try_into().unwrap());
-    stack
+    // Check for success, otherwise print PID
+    if pid <= 0 {
+        println!("Error launching PID NS root {}", std::io::Error::last_os_error());
+    } else {
+        println!("PID NS root is at {}", pid);
+        wait_for_children().unwrap();
+    }
 }
 
 pub extern "C" fn ns_init(_: *mut libc::c_void) -> libc::c_int {
@@ -39,12 +36,7 @@ pub extern "C" fn ns_init(_: *mut libc::c_void) -> libc::c_int {
     println!("Dropped all capabilities");
 
     // Create a thread to exec in
-    let pid = unsafe {
-        libc::clone(exec,
-                    gen_stack() as *mut libc::c_void,
-                    libc::CLONE_CHILD_CLEARTID | libc::CLONE_CHILD_SETTID | libc::SIGCHLD,
-                    std::ptr::null_mut())
-    };
+    let pid = unsafe { launch_thread(exec, RUNNER_STACK_SIZE, 0) };
 
     // Check for success, otherwise print PID
     if pid <= 0 {
@@ -77,29 +69,55 @@ pub extern "C" fn exec(_: *mut libc::c_void) -> libc::c_int {
     panic!("Running after sucessful execv")
 }
 
-
-fn main() {
-    // Validate argument length
-    let args: Vec<String> = env::args().collect();
-    if args.len() <= 1 {
-        panic!("You need to pass some args")
-    }
-
-    println!("Launching PID NS root");
-    // Create a thread to exec in
-    let pid = unsafe {
-        libc::clone(ns_init,
-                    gen_stack() as *mut libc::c_void,
-                    // Flags are stolen from `fork` with NEWPID added
-                    libc::CLONE_CHILD_CLEARTID | libc::CLONE_CHILD_SETTID | libc::SIGCHLD | libc::CLONE_NEWPID,
-                    std::ptr::null_mut())
-    };
-
-    // Check for success, otherwise print PID
-    if pid <= 0 {
-        println!("Error launching PID NS root {}", std::io::Error::last_os_error());
-    } else {
-        println!("PID NS root is at {}", pid);
-        wait_for_children().unwrap();
+// Wait for all children of the current PID to exit
+fn wait_for_children() -> Result<(), std::io::Error> {
+    loop {
+        let wait_retval = unsafe { libc::waitid(libc::P_ALL, 0, std::ptr::null_mut(), libc::WEXITED) };
+        if wait_retval == -1 {
+            let errno = std::io::Error::last_os_error();
+            match errno.raw_os_error() {
+                Some(libc::ECHILD) => return Ok(()),
+                Some(libc::EAGAIN) => continue,
+                Some(libc::EINTR) => continue,
+                _ => return Err(errno)
+            }
+        }
     }
 }
+
+
+// Thread managment
+// We launch with raw `clone` because we need to use its flags
+// otherwise I'd avoid it. I'm hiding all that mess down here
+
+
+// Tunable parameters:
+// Generally don't touch these. Except maybe alignment but even
+// then like.... why
+
+// Page size (4KB should be a good guess)
+// Used to align the fresh stacks
+const PAGE_ALIGNMENT: usize = 4096;
+// Small stack for the runner because it's sole purpose is
+// to be re-imaged with `exec`
+const RUNNER_STACK_SIZE: usize = 8192; // 8 KB
+// Manager stack larger because I may eventually want more
+// functionality there
+const MANAGER_STACK_SIZE: usize = 4194304; // 4 MB
+
+unsafe fn launch_thread(target: extern "C" fn(*mut libc::c_void) -> libc::c_int, stack_size: usize, additional_flags: libc::c_int) -> libc::c_int {
+    libc::clone(target,
+                gen_stack(stack_size) as *mut libc::c_void,
+                // Base flags are stolen from `fork`
+                // Plus, if I don't use them my wait calls fail
+                libc::CLONE_CHILD_CLEARTID | libc::CLONE_CHILD_SETTID | libc::SIGCHLD | additional_flags,
+                std::ptr::null_mut()
+                )
+}
+
+unsafe fn gen_stack(stack_size: usize) -> *mut u8 {
+    // Not totally sure what alignment to select so going with page alignment
+    let layout = std::alloc::Layout::from_size_align(stack_size, PAGE_ALIGNMENT).expect("Could not generate layout");
+    std::alloc::alloc_zeroed(layout).offset(stack_size.try_into().expect("Could not allocate stack for new process"))
+}
+
