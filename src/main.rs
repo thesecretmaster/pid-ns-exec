@@ -115,9 +115,10 @@ unsafe fn launch_thread(target: extern "C" fn(*mut libc::c_void) -> libc::c_int,
                 )
 }
 
-unsafe fn gen_stack(stack_size: usize) -> *mut u8 {
+fn gen_stack(stack_size: usize) -> *mut u8 {
     // Not totally sure what alignment to select so going with page alignment
     let layout = std::alloc::Layout::from_size_align(stack_size, PAGE_ALIGNMENT).expect("Could not generate layout");
-    std::alloc::alloc_zeroed(layout).offset(stack_size.try_into().expect("Could not allocate stack for new process"))
+    let stack_offset = stack_size.try_into().expect("Could not allocate stack for new process");
+    unsafe { std::alloc::alloc_zeroed(layout).offset(stack_offset) }
 }
 
