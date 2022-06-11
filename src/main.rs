@@ -144,14 +144,19 @@ const RUNNER_STACK_SIZE: usize = 8192; // 8 KB
 // functionality there
 const MANAGER_STACK_SIZE: usize = 4194304; // 4 MB
 
-unsafe fn launch_thread(target: extern "C" fn(*mut libc::c_void) -> libc::c_int, stack_size: usize, additional_flags: libc::c_int) -> libc::c_int {
-    libc::clone(target,
-                gen_stack(stack_size) as *mut libc::c_void,
-                // Base flags are stolen from `fork`
-                // Plus, if I don't use them my wait calls fail
-                libc::CLONE_CHILD_CLEARTID | libc::CLONE_CHILD_SETTID | libc::SIGCHLD | additional_flags,
-                std::ptr::null_mut()
-                )
+unsafe fn launch_thread(
+    target: extern "C" fn(*mut libc::c_void) -> libc::c_int,
+    stack_size: usize,
+    additional_flags: libc::c_int,
+) -> libc::c_int {
+    libc::clone(
+        target,
+        gen_stack(stack_size) as *mut libc::c_void,
+        // Base flags are stolen from `fork`
+        // Plus, if I don't use them my wait calls fail
+        libc::CLONE_CHILD_CLEARTID | libc::CLONE_CHILD_SETTID | libc::SIGCHLD | additional_flags,
+        std::ptr::null_mut(),
+    )
 }
 
 fn gen_stack(stack_size: usize) -> *mut u8 {
@@ -160,4 +165,3 @@ fn gen_stack(stack_size: usize) -> *mut u8 {
     let stack_offset = stack_size.try_into().unwrap();
     unsafe { std::alloc::alloc_zeroed(layout).offset(stack_offset) }
 }
-
