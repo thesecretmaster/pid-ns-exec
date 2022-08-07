@@ -41,6 +41,28 @@ fn main() {
 pub extern "C" fn ns_init(_: *mut libc::c_void) -> libc::c_int {
     use caps::CapSet;
 
+    // Mount the /proc dir
+    // Step 1: Unshare mounts
+    if (unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0) {
+        println!("Unshare mount founked {}", std::io::Error::last_os_error());
+        return -1
+    }
+    // Step 2: Make all future mounts private
+    let src = CString::new("none".as_bytes()).unwrap();
+    let path = CString::new("/".as_bytes()).unwrap();
+    if (unsafe { libc::mount(src.as_ptr(), path.as_ptr(), std::ptr::null(), libc::MS_REC | libc::MS_PRIVATE, std::ptr::null()) } != 0) {
+        println!("Couldn't make mounts private {}", std::io::Error::last_os_error());
+        return -1
+    }
+    // Step 3: Actually mount /proc
+    let src = CString::new("proc".as_bytes()).unwrap();
+    let path = CString::new("/proc".as_bytes()).unwrap();
+    let dest = CString::new("proc".as_bytes()).unwrap();
+    if (unsafe { libc::mount(src.as_ptr(), path.as_ptr(), dest.as_ptr(), 0, std::ptr::null()) } != 0) {
+        println!("Mount is fucked {}", std::io::Error::last_os_error());
+        return -1
+    }
+
     // First, drop capabilities
     // Dropping caps should always be allowed aside from bugs
     // in `rust-caps`, and in that case we definitely want to panic!
